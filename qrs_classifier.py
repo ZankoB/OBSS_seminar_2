@@ -27,7 +27,7 @@ class qrs_classifier:
         labels = []
         positions = []
         search_window = int(0.030 * self.fs) 
-        valid_symbols = ['N', 'V', 'L', 'R']
+        valid_symbols = ['N', 'V']
 
         for s, sym in zip(ann_samples, ann_symbols):
             if sym not in valid_symbols: continue
@@ -50,8 +50,7 @@ class qrs_classifier:
             if len(qrs) != self.window_len: continue
 
             qrs_list.append(qrs)
-            final_label = 'N' if sym in ['N', 'L', 'R'] else 'V'
-            labels.append(final_label)
+            labels.append(sym)
             positions.append(exact_peak)
 
         return np.array(qrs_list), np.array(labels), np.array(positions)
