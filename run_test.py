@@ -1,6 +1,24 @@
+import os
 import numpy as np
 from database_reader import database_reader
 from qrs_classifier import qrs_classifier
+
+def write_cls_file(filename, positions, predictions):
+    """
+    Write classifications to an ASCII .cls file
+    Format: <sample_index> <class_label>
+    """
+
+    out_dir = "./out"
+
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    filename = os.path.join(out_dir, filename)
+
+    with open(filename, 'w') as f:
+        for pos, label in zip(positions, predictions):
+            f.write(f"{int(pos)} {label}\n")
 
 def run_test():
     reader = database_reader()
@@ -34,6 +52,9 @@ def run_test():
         clf.estimate_threshold(qrs, labels) 
         pred = clf.classify(qrs, positions)
 
+        cls_filename = f"record_{rec}.cls"
+        write_cls_file(cls_filename, positions, pred)
+
         # Update Global Counts
         TP = np.sum((labels == 'V') & (pred == 'V'))
         TN = np.sum((labels == 'N') & (pred == 'N'))
@@ -51,7 +72,6 @@ def run_test():
         f1 = 2 * Se * Pp / (Se + Pp) if (Se + Pp) > 0 else 0
         print(f"-> Local F1: {f1:.4f}")
 
-    # --- CALCULATE GLOBAL METRICS ---
     print("\n" + "="*50)
     print("FINAL GLOBAL PERFORMANCE (Pooled)")
     print("="*50)
