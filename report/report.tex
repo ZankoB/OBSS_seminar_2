@@ -1,0 +1,247 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+% The preceding line is only needed to identify funding in the first footnote. If that is unneeded, please comment it out.
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{datetime}
+\usepackage{microtype}
+\usepackage{float}
+
+\newdateformat{schoolyear}{%
+  \ifthenelse{\month > 9} % If current month is October or later
+    {\the\year/\the\numexpr\year+1-2000\relax} % Show current year / next year (last two digits)
+    {\the\numexpr\year-1\relax/\the\numexpr\year-2000\relax} % Show previous year / current year (last two digits)
+}
+
+\def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
+    T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
+\usepackage{parskip}
+
+
+
+
+
+\begin{document}
+
+\title{Assignment \#2:\\Analysis of electrocardiographic (ECG) signals}
+
+\author{
+
+\IEEEauthorblockN{Žane Bučan}
+\IEEEauthorblockA{\textit{OBSS \schoolyear\today, FRI, UL} \\
+    \textit{zb26346@student.uni-lj.si}}
+% \and
+% \IEEEauthorblockN{Second Author}
+% \IEEEauthorblockA{\textit{OBSS \schoolyear\today, FRI, UL} \\
+%     \textit{your.email@you.use.as.an.email.id}}
+
+}
+
+\maketitle
+
+\begin{abstract}
+An algorithm classifying ECG heartbeats as normal (N) or ventricular ectopic (V) was implemented using linear norm strategies. Performance was evaluated on the MIT-BIH Arrhythmia Database~\cite{moody2001mitbih}, showing high accuracy.
+\end{abstract}
+
+% ########################################
+\section{Introduction}
+An electrocardiogram (ECG) is a non-invasive medical test that records the electrical activity of the heart over time. Using electrodes, it measures the tiny electrical signals produced during each heart beat, which reflect the heart's rhythm and function. ECG signals are widely used to detect and monitor cardiovascular conditions, such as arrhythmia, myocardial infarction and other heart disorders. The analysis of these signals involves classifying heart beat types to properly diagnose a person, if his heat beats normal or abnormal . That is why it is important that we develop robust algorithms to automatically classify each heart beat in the signal.
+
+% ########################################
+%\section{Related Work}
+% The implemented algorithm is based on ``A Real-Time QRS Detection Algorithm''~\cite{PanTompkins1985} developed by JIAPU PAN and WILLIS J. TOMPKINS in 1985, which reliably recognizes QRS complexes based upon digital analyses of slope, amplitude and width.
+
+% ########################################
+\section{Methodology}
+The algorithm reads a record, QRS locations, and annotations. Distances between beats and a reference normal beat are computed using:
+
+\begin{align}
+    d_1(x, y) &= \frac{1}{N} \sum_{i=1}^{N} |x_i - y_i|\\
+    d_2(x, y) &= \sqrt{\frac{1}{N} \sum_{i=1}^{N} (x_i - y_i)^2}\\
+    d_\infty(x, y) &= \max_{i=1,\dots,N} |x_i - y_i|\\
+    d_\text{corr}(x, y) &= 1 - \frac{\sum_{i=1}^{N} (x_i - \bar{x})(y_i - \bar{y})}
+    {\sqrt{\sum_{i=1}^{N} (x_i - \bar{x})^2 \sum_{i=1}^{N} (y_i - \bar{y})^2}}\\
+    d_r(x, y) &= 1 - \frac{\sum_{i=1}^{N} (x_i - \bar{x})(y_i - \bar{y})}
+    {\sqrt{\sum_{i=1}^{N} (x_i - \bar{x})^2 \sum_{i=1}^{N} (y_i - \bar{y})^2}}
+\end{align}
+with $\bar{x}=\frac{1}{N}\sum_i x_i$, $\bar{y}=\frac{1}{N}\sum_i y_i$.
+
+
+Then the algorithm includes the next steps ('N' - normal beat, 'V' - ventricular beat):
+
+\begin{itemize}
+    \item \textbf{QRS Extraction:} 60\,ms before and 100\,ms after each annotated 'N' and 'V' peak.
+    
+    \item \textbf{Normalization}: To adjust QRS complexes by amplitude the algorithm normalizes the signal with the function:
+    \[
+        \hat{q} =
+        \frac{q - \mu}
+        {\max \left|q - \mu \right|}
+        \quad \text{where} \quad
+        \mu = \frac{1}{N}\sum_{i=1}^{N} q_i
+    \]
+    Where $q$ is a QRS complex and $q_i$ is a value in the signal.
+    
+    \item \textbf{Reference building}: The algorithm needs a good 'N' heart beat to compare it to the other ones. That is why it takes the first 5 minutes of the signal, extracts 'N' heart beats from the 5 minute time frame and builds a reference beat of the average 'N' heart beats.
+    
+    \item \textbf{Threshold estimation}: The goal of the threshold estimation is to determine, for each distance strategy, a threshold that separates 'N' from 'V' QRS complexes, and to assign a weight to each strategy for voting.
+
+    For each QRS beat $q_i$ and a chosen reference QRS $q_\text{ref}$, it computes its distance according to a selected strategy $s$:
+    \[
+        d_s(q_i,q_\text{ref}) = \text{distance between $q_i$ and $q_\text{ref}$ using stategy $s$} 
+    \]
+    From the distances, it considers:
+    \begin{itemize}
+        \item $D_s^N$ - distances of 'N' beats only
+        \item $D_s^\text{all}$ - distances of all beats
+    \end{itemize}
+    This allows the algorithm to model the expected distance distribution of normal beats.
+
+    The algorithm then calculates some statistics like:
+    \begin{itemize}
+        \item Median distance of normal beats:
+        \[
+            median_s = meadian(D_s^N)
+        \]
+        \item Median absolute deviation (MAD):
+        \[
+            MAD_s = median(|D_s^N - median_s|)  
+        \]
+        \item Scaled MAD, which approximates the standard deviation:
+        \[
+            \sigma_s = 1.4826 * MAD_s
+        \]
+    \end{itemize}
+
+    With that the algorithm can generate candidate thresholds as:
+    \[
+        \theta_s(k) = median_s + k * \sigma_s, k \in \{1.0, 1.2,...,7.8\}
+    \]
+    This creates a range of thresholds around the normal distribution of distances.
+
+    Next step is to predict a beat type for each threshold:
+    \[
+        \hat{y}_i(k) =
+        \begin{cases}
+            N, & d_s(q_i, q_\text{ref}) \le \theta_s(k)\\
+            V, & d_s(q_i, q_\text{ref}) > \theta_s(k)
+        \end{cases}
+    \]
+
+    For each candidate threshold, the classifier computes Sensitivity (Se), Positive predictivity (+P), Specificity (Sp) and F1-score.
+
+    Then it creates an optimal threshold with the equation:
+    \[
+        k^* = \arg\max_{k}
+        \begin{cases}
+            F_1, & \text{if PVCs exist and Sp $\ge$ 0.90}\\
+            Sp, & \text{if no PVCs}
+        \end{cases}
+    \]
+    The final threshold is:
+    \[
+        \theta_s^\text{final} = median_s + k^* * \sigma_s
+    \]
+
+    Each strategy is then weighted for voting:
+    \[
+        w_s = 
+        \begin{cases}
+            max(F_1,0.05), & \text{if PVCs exist}\\
+            \text{$0.5$ or $0.1$}, & \text{if no PVCs depending on Sp}
+        \end{cases}
+    \]
+    A higher weight indicates a strategy that better separates N from V beats.
+
+    \item \textbf{Classification}: The final step is to classify each heart beat.
+    Firstly it calculates RR intervals for the QRS fiducial points $\{s_i\}$:
+    \[
+        RR_i = s_i - s_\text{$i-1$}, i=2,...,n
+    \]
+    and the median RR interval is computed:
+    \[
+        RR_\text{med}=median(RR_i)
+    \].
+    These are then used to detect early beats (short RR) and pauses (long RR):
+    \[
+    \begin{aligned}
+        \text{is\_early} &= RR_{i-1} < 0.85 \cdot RR_{\text{med}}, \\
+        \text{has\_pause} &= RR_{i} > 1.10 \cdot RR_{\text{med}}
+    \end{aligned}
+    \]
+
+    Then each strategy is used to determine the distance between the QRS ($q_i$) and the previously calculated reference beat ($\hat{q}$). Distances are then compared to their estimated threshold ($T_j$), which were defined during training.
+
+    Next step is to determine a preliminary vote $v_{i,j}$:
+    \[
+        v_{i,j} =
+        \begin{cases}
+        V, & \text{if } d_j(q_i, \hat{q}) > T_j \\
+        V, & 
+        \begin{aligned}
+            & \text{if is\_early and has\_pause and } \\
+            & d_j(q_i, \hat{q}) > 0.7 \, T_j
+        \end{aligned} \\[1mm]
+        V, & \text{if is\_early and } d_j(q_i, \hat{q}) > 0.9 \, T_j \\
+        N, & \text{otherwise}
+        \end{cases}
+    \]
+
+    The final step is to calculate the combined weighted score ($s_i$) for the 'N' and 'V' combining each strategy:
+    \[
+        \text{score}_i = \sum_{j=1}^{m} w_j \, \mathbf{1}_{v_{i,j} = i}, \quad i \in \{V, N\}
+    \]
+    The best score is then the final label of the QRS complex
+
+\end{itemize}
+
+% ########################################
+\section{Experiments}
+Only N and V reference annotations were used for both training and evaluation. All other annotated heartbeat types were excluded prior to QRS extraction, in accordance with the assignment specification.
+
+To develop this algorithm, I used the MIT-BIH Arrhythmia Database~\cite{moody2001mitbih} from PhysioNet~\cite{goldberger2000physiobank}. The efficiency of the algorithm was then defined with the average sensitivity (Se), average positive predictivity (+P) and average specificity (Sp) threw the whole database.
+\[
+    Se = \frac{TP}{TP + FN}, +P=\frac{TP}{TP + FP}, Sp = \frac{TN}{TN + FP}
+\]
+
+% ########################################
+\section{Results and Discussion}
+The results show, that the algorithm was successfully implemented.
+
+% #################
+\subsection{Results}
+
+\begin{tabular}{l l}
+Total PVCs Detected (TP): & 6551 \\
+Total Missed PVCs (FN): & 579 \\
+Total False Alarms (FP): & 608 \\
+\hline
+Global Sensitivity: & 91.88\% \\
+Global Precision: & 91.51\% \\
+Global Specificity: & 99.19\% \\
+\end{tabular}
+
+% #################
+\subsection{Discussion}
+I achieved great results. High positive predictivity indicates that most classes correspond to true QRS annotations. Sensitivity indicates that some QRS complexes were falsely classified by the algorithm, possibly due to noise in the data. Overall, the high positive predictivity combined with strong sensitivity demonstrates that the implemented classifier is effective for classifying.
+
+% ########################################
+\section{Conclusion}
+In this work, a QRS beat classifying algorithm was implemented and evaluated on the MIT-BIH Arrhythmia Database. The algorithm successfully classifies beats with high accuracy, even tho its base calculations are linear norms which are not as advanced and complex as deep learning classifiers. The results demonstrate that the implemented approach is somewhat reliable for automated ECG analysis, providing a solid foundation for further studies in heartbeat classification.
+
+
+% ########################################
+\bibliographystyle{IEEEtran}
+\bibliography{report}
+
+\end{document}

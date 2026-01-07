@@ -19,45 +19,27 @@ class qrs_classifier:
         self.thresholds = {}
         self.strategy_weights = {}
 
-    # -------------------------------------------------------
-    # QRS extraction
-    # -------------------------------------------------------
     def extract_qrs(self, signal, ann_samples, ann_symbols):
         qrs_list = []
         labels = []
         positions = []
-        search_window = int(0.030 * self.fs) 
-        valid_symbols = ['N', 'V']
 
         for s, sym in zip(ann_samples, ann_symbols):
-            if sym not in valid_symbols: continue
+            if sym not in ['N', 'V']:
+                continue
 
-            search_start = s - search_window
-            search_end = s + search_window
-            if search_start < 0 or search_end >= len(signal): continue
-
-            local_slice = signal[search_start:search_end, 0]
-            if len(local_slice) == 0: continue
-            
-            peak_offset = np.argmax(np.abs(local_slice))
-            exact_peak = search_start + peak_offset
-
-            start = exact_peak - self.pre_samp
-            end = exact_peak + self.post_samp
-            if start < 0 or end >= len(signal): continue
+            start = s - self.pre_samp
+            end = s + self.post_samp
+            if start < 0 or end >= len(signal):
+                continue
 
             qrs = signal[start:end, 0]
-            if len(qrs) != self.window_len: continue
-
             qrs_list.append(qrs)
             labels.append(sym)
-            positions.append(exact_peak)
+            positions.append(s)
 
         return np.array(qrs_list), np.array(labels), np.array(positions)
 
-    # -------------------------------------------------------
-    # Normalization
-    # -------------------------------------------------------
     @staticmethod
     def normalize_qrs(qrs):
         qrs = qrs - np.mean(qrs)
@@ -65,9 +47,6 @@ class qrs_classifier:
         if max_val > 0: qrs = qrs / max_val
         return qrs
 
-    # -------------------------------------------------------
-    # Distance Metrics
-    # -------------------------------------------------------
     @staticmethod
     def d1(x, y): return np.mean(np.abs(x - y))
     @staticmethod
@@ -90,22 +69,17 @@ class qrs_classifier:
         if denom == 0: return 1.0
         return 1 - (np.sum((x - x_ave) * (y - y_ave)) / denom)
 
-    # -------------------------------------------------------
-    # Build Reference
-    # -------------------------------------------------------
     def build_reference(self, qrs, labels, minutes=5):
-        beats_per_min = 70; max_beats = minutes * beats_per_min
+        beats_per_min = 70
+        max_beats = minutes * beats_per_min
         normal_indices = np.where(labels == 'N')[0]
         if len(normal_indices) == 0: normal_indices = np.arange(len(qrs))
         if len(normal_indices) > max_beats: normal_indices = normal_indices[:max_beats]
         
         normal_qrs = qrs[normal_indices]
-        self.reference_qrs = np.median(normal_qrs, axis=0) 
+        self.reference_qrs = np.mean(normal_qrs, axis=0) 
         return self.reference_qrs
 
-    # -------------------------------------------------------
-    # Training: BALANCED Grid Search
-    # -------------------------------------------------------
     def estimate_threshold(self, qrs, labels):
         normal_qrs = qrs[labels == 'N']
         if len(normal_qrs) == 0: normal_qrs = qrs
@@ -160,9 +134,6 @@ class qrs_classifier:
 
             # print(f"Strategy {strategy_name}: K={best_k:.1f}, Weight={self.strategy_weights[strategy_name]:.2f}")
 
-    # -------------------------------------------------------
-    # Classification: Weighted Voting (RELAXED FILTER)
-    # -------------------------------------------------------
     def classify(self, qrs, positions=None):
         final_predictions = []
         if not self.thresholds: return np.array(['N'] * len(qrs))

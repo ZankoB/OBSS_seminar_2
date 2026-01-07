@@ -4,11 +4,6 @@ from database_reader import database_reader
 from qrs_classifier import qrs_classifier
 
 def write_cls_file(filename, positions, predictions):
-    """
-    Write classifications to an ASCII .cls file
-    Format: <sample_index> <class_label>
-    """
-
     out_dir = "./out"
 
     if not os.path.exists(out_dir):
