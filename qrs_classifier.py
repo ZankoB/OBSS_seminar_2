@@ -73,8 +73,13 @@ class qrs_classifier:
         beats_per_min = 70
         max_beats = minutes * beats_per_min
         normal_indices = np.where(labels == 'N')[0]
-        if len(normal_indices) == 0: normal_indices = np.arange(len(qrs))
-        if len(normal_indices) > max_beats: normal_indices = normal_indices[:max_beats]
+        
+        if len(normal_indices) == 0:
+            self.reference_qrs = None
+            return None
+        
+        if len(normal_indices) > max_beats:
+            normal_indices = normal_indices[:max_beats]
         
         normal_qrs = qrs[normal_indices]
         self.reference_qrs = np.mean(normal_qrs, axis=0) 
@@ -161,10 +166,10 @@ class qrs_classifier:
                 d = dist_func(self.reference_qrs, q)
                 
                 vote = 'N'
-                if d > threshold:
+                if d > threshold * 1.05:
                     vote = 'V'
                 elif is_early and has_pause:
-                    if d > (0.7 * threshold): vote = 'V'
+                    if d > (0.75 * threshold): vote = 'V'
                 elif is_early:
                     if d > (0.9 * threshold): vote = 'V'
                 
@@ -174,8 +179,10 @@ class qrs_classifier:
                 if vote == 'V': score_v += weight
                 else: score_n += weight
             
-            if score_v > score_n: final_predictions.append('V')
-            else: final_predictions.append('N')
+            if score_v > (score_n + 0.1):
+                final_predictions.append('V')
+            else:
+                final_predictions.append('N')
 
         return np.array(final_predictions)
 
@@ -190,3 +197,88 @@ class qrs_classifier:
         Pp = TP / (TP + FP + 1e-10)
         Sp = TN / (TN + FP + 1e-10)
         return Se, Pp, Sp
+class qrs_classifier_old:
+    """
+    Simple QRS classifier for MIT-BIH Arrhythmia Database
+    - Only N (normal) and V (ventricular) beats
+    - Single reference normal beat from first 5 minutes
+    """
+
+    def __init__(self, fs: int, pre_ms: int = 60, post_ms: int = 100):
+        self.fs = fs
+        self.pre_samp = int(pre_ms * fs / 1000)
+        self.post_samp = int(post_ms * fs / 1000)
+        self.window_len = self.pre_samp + self.post_samp
+        self.reference_qrs = None
+        self.threshold = None
+
+    def extract_qrs(self, signal, ann_samples, ann_symbols):
+        qrs_list, labels, positions = [], [], []
+
+        for s, sym in zip(ann_samples, ann_symbols):
+            if sym not in ['N', 'V']:
+                continue
+
+            start = s - self.pre_samp
+            end = s + self.post_samp
+            if start < 0 or end >= len(signal):
+                continue
+
+            qrs = signal[start:end, 0]
+            if len(qrs) != self.window_len:
+                continue
+
+            qrs_list.append(qrs)
+            labels.append(sym)
+            positions.append(s)
+
+        return np.array(qrs_list), np.array(labels), np.array(positions)
+
+    @staticmethod
+    def normalize_qrs(qrs):
+        qrs = qrs - np.mean(qrs)
+        max_val = np.max(np.abs(qrs))
+        if max_val > 0:
+            qrs = qrs / max_val
+        return qrs
+
+    @staticmethod
+    def d2(x, y):
+        return np.sqrt(np.mean((x - y) ** 2))
+
+    def build_reference(self, qrs, labels):
+        for i, label in enumerate(labels):
+            if label == 'N':
+                self.reference_qrs = qrs[i]
+                return
+        self.reference_qrs = None
+
+    def estimate_threshold(self, qrs, labels):
+        distances = np.array([self.d2(self.reference_qrs, q) for q, l in zip(qrs, labels) if l == 'N'])
+        if len(distances) > 0:
+            self.threshold = np.median(distances) * 3
+        else:
+            self.threshold = 0.5
+
+    def classify(self, qrs, positions=None):
+        pred = []
+        for q in qrs:
+            d = self.d2(self.reference_qrs, q)
+            if d <= self.threshold:
+                pred.append('N')
+            else:
+                pred.append('V')
+        return np.array(pred)
+
+    @staticmethod
+    def performance_metrics(true_labels, pred_labels):
+        TP = np.sum((true_labels == 'V') & (pred_labels == 'V'))
+        TN = np.sum((true_labels == 'N') & (pred_labels == 'N'))
+        FP = np.sum((true_labels == 'N') & (pred_labels == 'V'))
+        FN = np.sum((true_labels == 'V') & (pred_labels == 'N'))
+
+        Se = TP / (TP + FN + 1e-10)
+        Pp = TP / (TP + FP + 1e-10)
+        Sp = TN / (TN + FP + 1e-10)
+        F1 = 2 * Se * Pp / (Se + Pp + 1e-10)
+        return Se, Pp, Sp, F1

@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from database_reader import database_reader
-from qrs_classifier import qrs_classifier
+from qrs_classifier import qrs_classifier, qrs_classifier_old
 
 def write_cls_file(filename, positions, predictions):
     out_dir = "./out"
@@ -44,6 +44,9 @@ def run_test():
 
         qrs = np.array([clf.normalize_qrs(q) for q in qrs])
         clf.build_reference(qrs, labels)
+        if clf.reference_qrs is None:
+            print(f"Skipping record {rec}: no normal beats")
+            continue
         clf.estimate_threshold(qrs, labels) 
         pred = clf.classify(qrs, positions)
 

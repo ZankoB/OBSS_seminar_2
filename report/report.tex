@@ -50,7 +50,7 @@
 \maketitle
 
 \begin{abstract}
-An algorithm classifying ECG heartbeats as normal (N) or ventricular ectopic (V) was implemented using linear norm strategies. Performance was evaluated on the MIT-BIH Arrhythmia Database~\cite{moody2001mitbih}, showing high accuracy.
+An algorithm classifying ECG heartbeats as normal (N) or ventricular ectopic (V) was implemented using linear norm strategies. Performance was evaluated on the MIT-BIH Arrhythmia Database~\cite{moody2001mitbih}, showing high accuracy. The multi distance classifier is compared to the single distance classifier.
 \end{abstract}
 
 % ########################################
@@ -93,6 +93,8 @@ Then the algorithm includes the next steps ('N' - normal beat, 'V' - ventricular
     Where $q$ is a QRS complex and $q_i$ is a value in the signal.
     
     \item \textbf{Reference building}: The algorithm needs a good 'N' heart beat to compare it to the other ones. That is why it takes the first 5 minutes of the signal, extracts 'N' heart beats from the 5 minute time frame and builds a reference beat of the average 'N' heart beats.
+
+    The standard $d_2$ norm classifier declares the first 'N' heart beat as a reference. 
     
     \item \textbf{Threshold estimation}: The goal of the threshold estimation is to determine, for each distance strategy, a threshold that separates 'N' from 'V' QRS complexes, and to assign a weight to each strategy for voting.
 
@@ -150,7 +152,7 @@ Then the algorithm includes the next steps ('N' - normal beat, 'V' - ventricular
     \]
     The final threshold is:
     \[
-        \theta_s^\text{final} = median_s + k^* * \sigma_s
+        T_j = median_s + k^* * \sigma_s
     \]
 
     Each strategy is then weighted for voting:
@@ -162,6 +164,8 @@ Then the algorithm includes the next steps ('N' - normal beat, 'V' - ventricular
         \end{cases}
     \]
     A higher weight indicates a strategy that better separates N from V beats.
+
+    For the standard $d_2$ norm classifier, the classification threshold was estimated from the distribution of distances between normal QRS complexes and a reference beat. A robust median-based estimator was used, with the threshold defined as the median distance plus a scaled median absolute deviation. This provides a data-driven yet robust default threshold for separating normal and ventricular beats.
 
     \item \textbf{Classification}: The final step is to classify each heart beat.
     Firstly it calculates RR intervals for the QRS fiducial points $\{s_i\}$:
@@ -186,11 +190,11 @@ Then the algorithm includes the next steps ('N' - normal beat, 'V' - ventricular
     \[
         v_{i,j} =
         \begin{cases}
-        V, & \text{if } d_j(q_i, \hat{q}) > T_j \\
+        V, & \text{if } d_j(q_i, \hat{q}) > T_j * 1.05 \\
         V, & 
         \begin{aligned}
             & \text{if is\_early and has\_pause and } \\
-            & d_j(q_i, \hat{q}) > 0.7 \, T_j
+            & d_j(q_i, \hat{q}) > 0.75 \, T_j
         \end{aligned} \\[1mm]
         V, & \text{if is\_early and } d_j(q_i, \hat{q}) > 0.9 \, T_j \\
         N, & \text{otherwise}
@@ -209,7 +213,9 @@ Then the algorithm includes the next steps ('N' - normal beat, 'V' - ventricular
 \section{Experiments}
 Only N and V reference annotations were used for both training and evaluation. All other annotated heartbeat types were excluded prior to QRS extraction, in accordance with the assignment specification.
 
-To develop this algorithm, I used the MIT-BIH Arrhythmia Database~\cite{moody2001mitbih} from PhysioNet~\cite{goldberger2000physiobank}. The efficiency of the algorithm was then defined with the average sensitivity (Se), average positive predictivity (+P) and average specificity (Sp) threw the whole database.
+If a record did not have any 'N' beats in the first 5 minutes, the record was skipped.
+
+To develop this algorithm, I used the MIT-BIH Arrhythmia Database~\cite{moody2001mitbih} from PhysioNet~\cite{goldberger2000physiobank}. The efficiency of the algorithm was then defined with the average sensitivity (Se), average positive predictivity (+P) and average specificity (Sp) threw the whole database. with the addition of the F1 Score to get a better feel of the balance between missed detections and false alarms.
 \[
     Se = \frac{TP}{TP + FN}, +P=\frac{TP}{TP + FP}, Sp = \frac{TN}{TN + FP}
 \]
@@ -221,19 +227,39 @@ The results show, that the algorithm was successfully implemented.
 % #################
 \subsection{Results}
 
+The multi distance classifier achieved:
+
 \begin{tabular}{l l}
-Total PVCs Detected (TP): & 6551 \\
-Total Missed PVCs (FN): & 579 \\
-Total False Alarms (FP): & 608 \\
+Total PVCs Detected (TP): & 6534 \\
+Total Missed PVCs (FN): & 74 \\
+Total False Alarms (FP): & 521 \\
 \hline
-Global Sensitivity: & 91.88\% \\
-Global Precision: & 91.51\% \\
-Global Specificity: & 99.19\% \\
+Global Sensitivity: & 98.88\% \\
+Global Precision: & 92.61\% \\
+Global Specificity: & 99.31\% \\
+Global F1 Score: & 95.65\%
+\end{tabular}
+
+while single $d_2$ norm classifier achieved:
+
+\begin{tabular}{l l}
+Total PVCs Detected (TP): & 6414 \\
+Total Missed PVCs (FN): & 194 \\
+Total False Alarms (FP): & 448 \\
+\hline
+Global Sensitivity: & 97.06\% \\
+Global Precision: & 93.47\% \\
+Global Specificity: & 99.40\% \\
+Global F1 Score: & 95.23\%
 \end{tabular}
 
 % #################
 \subsection{Discussion}
 I achieved great results. High positive predictivity indicates that most classes correspond to true QRS annotations. Sensitivity indicates that some QRS complexes were falsely classified by the algorithm, possibly due to noise in the data. Overall, the high positive predictivity combined with strong sensitivity demonstrates that the implemented classifier is effective for classifying.
+
+Compared to the single-distance $d_2$ classifier, the proposed multi-distance weighted voting approach significantly improves sensitivity to ventricular ectopic beats, while maintaining comparable precision and specificity. The overall improvement in F1 score confirms a better balance between missed detections and false alarms.
+
+If we take a look at the raw statistics, the multi distance classifier detected 120 more 'V' heart beats and had a 120 decrease in missed 'V' beats, while having a 73 increase in false alarms. This trade-off is clinically meaningful, as reducing missed ventricular beats is generally more important than a moderate increase in false alarms.
 
 % ########################################
 \section{Conclusion}
